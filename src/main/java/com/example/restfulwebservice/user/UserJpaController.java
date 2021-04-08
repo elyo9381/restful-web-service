@@ -1,5 +1,6 @@
 package com.example.restfulwebservice.user;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.hateoas.EntityModel;
 import org.springframework.hateoas.server.mvc.WebMvcLinkBuilder;
 import org.springframework.http.ResponseEntity;
@@ -9,77 +10,85 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import javax.validation.Valid;
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
 
 @RestController
-public class UserController {
+@RequestMapping("/jpa")
+public class UserJpaController {
 
-    private static UserDaoService service;
+    @Autowired
+    private UserRepository userRepository;
 
-    public UserController(UserDaoService service) {
-        this.service = service;
-    }
+    @Autowired
+    private PostRepository postRepository;
 
     @GetMapping("/users")
-    public List<User> retrieveAllusers(){
-        return service.findAll();
+    public List<User> retrieveAllUsers(){
+        List<User> all = userRepository.findAll();
+        return all;
     }
 
-    // GET /users/1 or /users/10 -> String
     @GetMapping("/users/{id}")
     public EntityModel<User> retrieveUser(@PathVariable int id){
-        User user = service.findOne(id);
+        Optional<User> user = userRepository.findById(id);
 
-        if(user == null) {
+        if(!user.isPresent()){
             throw new UserNotFoundException(String.format("ID[%s] not found",id));
         }
 
-        //HETAOS >> 하나의 restful의 리소스에서 연관된 링크 정보를 함께 제공
-        // 개발자 입장에선 업무량증가이지만 사용자는 편의성을 제공받을수있다.
-        EntityModel<User> model = new EntityModel<>(user);
-        WebMvcLinkBuilder linkTo = linkTo(methodOn(this.getClass()).retrieveAllusers());
+        EntityModel<User> model = new EntityModel<>(user.get());
+        WebMvcLinkBuilder linkTo = linkTo(methodOn(this.getClass()).retrieveAllUsers());
         model.add(linkTo.withRel("all-users"));
 
         return model;
     }
 
+    @DeleteMapping("/users/{id}")
+    public void deletUser(@PathVariable int id){
+        userRepository.deleteById(id);
+    }
+
     @PostMapping("/users")
     public ResponseEntity<User> createUser(@Valid @RequestBody User user){
-        User savedUser = service.save(user);
+        User saveUser = userRepository.save(user);
 
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
-                .buildAndExpand(savedUser.getId())
+                .buildAndExpand(saveUser.getId())
                 .toUri();
 
         return ResponseEntity.created(location).build();
     }
 
-    @DeleteMapping("/users/{id}")
-    public void deleteUser(@PathVariable int id){
-        User user = service.deleteById(id);
+    @GetMapping("/users/{id}/posts")
+    public List<Post> retrieveAllPostsByUser(@PathVariable int id){
+        Optional<User> user = userRepository.findById(id);
 
-        if( user == null){
+        if(!user.isPresent()){
             throw new UserNotFoundException(String.format("ID[%s] not found",id));
         }
+
+        return user.get().getPosts();
     }
 
-    @PutMapping("/users/{id}")
-    public ResponseEntity<User> updateUser(@PathVariable int id,@RequestBody User user){
-        User updateUser = service.update(id,user);
+    @PostMapping("/users/{id}/posts")
+    public ResponseEntity<User> createPost(@PathVariable int id, @RequestBody Post post){
+        Optional<User> user = userRepository.findById(id);
 
-        if(user == null){
-            throw  new UserNotFoundException(String.format("ID[%s] not found",id));
+        if(!user.isPresent()){
+            throw new UserNotFoundException(String.format("ID[%s] not found",id));
         }
+
+        Post savePost = postRepository.save(post);
 
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
-                .buildAndExpand(updateUser.getId())
+                .buildAndExpand(savePost.getId())
                 .toUri();
 
         return ResponseEntity.created(location).build();
-
     }
 }
